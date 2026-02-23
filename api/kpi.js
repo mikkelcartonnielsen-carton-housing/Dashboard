@@ -1,53 +1,101 @@
-export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+// /api/kpi.js (Vercel Serverless Function)
 
-  if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
+const NOTION_VERSION = "2022-06-28";
 
-  const NOTION_KEY = process.env.NOTION_API_KEY;
-  if (!NOTION_KEY) return res.status(500).json({ error: "Missing NOTION_API_KEY" });
+// Data sources i dit Notion setup
+const DS_EJENDOMME = "collection://30837e55-cb6c-80c0-99d3-000b3188ce62"; // Ejendomme
+const DS_LEJEMAAL = "collection://d9983889-b876-4b83-85b1-8f0ab6931004";  // Lejemål
 
-  const DB_ID = "30837e55cb6c804f8d4fe2ffb2aa54ee";
+async function notionQueryAll({ apiKey, databaseId, body }) {
+  const url = `https://api.notion.com/v1/databases/${databaseId}/query`;
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    "Notion-Version": NOTION_VERSION,
+    "Content-Type": "application/json",
+  };
 
-  try {
-    const notionRes = await fetch(`https://api.notion.com/v1/databases/${DB_ID}/query`, {
+  let results = [];
+  let has_more = true;
+  let start_cursor = undefined;
+
+  while (has_more) {
+    const payload = {
+      page_size: 100,
+      ...body,
+      ...(start_cursor ? { start_cursor } : {}),
+    };
+
+    const r = await fetch(url, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${NOTION_KEY}`,
-        "Notion-Version": "2022-06-28",
-        "Content-Type": "application/json",
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    const json = await r.json();
+    if (!r.ok) {
+      const err = new Error("Notion API error");
+      err.status = r.status;
+      err.notion = json;
+      throw err;
+    }
+
+    results = results.concat(json.results || []);
+    has_more = !!json.has_more;
+    start_cursor = json.next_cursor || undefined;
+  }
+
+  return results;
+}
+
+function getNumberProp(page, propName) {
+  return page?.properties?.[propName]?.number ?? 0;
+}
+
+export default async function handler(req, res) {
+  try {
+    const NOTION_API_KEY = process.env.NOTION_API_KEY;
+    if (!NOTION_API_KEY) {
+      return res.status(500).json({ error: "Missing NOTION_API_KEY" });
+    }
+
+    // 1) assets: sum(Købesum) fra Ejendomme
+    const properties = await notionQueryAll({
+      apiKey: NOTION_API_KEY,
+      databaseId: DS_EJENDOMME,
+      body: {}, // ingen filter
+    });
+
+    const assets = properties.reduce((sum, p) => sum + getNumberProp(p, "Købesum"), 0);
+
+    // 2) aktive lejemål: Status = Aktiv
+    const activeLeases = await notionQueryAll({
+      apiKey: NOTION_API_KEY,
+      databaseId: DS_LEJEMAAL,
+      body: {
+        filter: {
+          property: "Status",
+          select: { equals: "Aktiv" },
+        },
       },
-      body: JSON.stringify({}),
     });
 
-    const data = await notionRes.json();
+    const units = activeLeases.length;
 
-    if (!notionRes.ok) {
-      return res.status(notionRes.status).json({
-        error: "Notion API error",
-        notion: data,
-      });
-    }
+    const monthlyRent = activeLeases.reduce(
+      (sum, p) => sum + getNumberProp(p, "Husleje (kr.)"),
+      0
+    );
 
-    let totalKøbesum = 0;
-    let totalÅrligLejeindtægt = 0;
-    let totalAntalLejemål = 0;
+    const rent = monthlyRent * 12;
 
-    for (const page of data.results ?? []) {
-      totalKøbesum += page?.properties?.["Købesum"]?.number ?? 0;
-      totalÅrligLejeindtægt += page?.properties?.["Årlig lejeindtægt"]?.number ?? 0;
-      totalAntalLejemål += page?.properties?.["Antal lejemål"]?.number ?? 0;
-    }
-
-    return res.json({
-      units: totalAntalLejemål,
-      assets: totalKøbesum,
-      rent: totalÅrligLejeindtægt,
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(200).json({ units, assets, rent });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      error: err.message || "Server error",
+      notion: err.notion,
+      status: err.status,
     });
-  } catch (error) {
-    console.error("Error:", error);
-    return res.status(500).json({ error: String(error?.message ?? error) });
   }
 }
