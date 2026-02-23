@@ -19,7 +19,6 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === "GET") {
-      // Fetch from Notion
       const response = await fetch(
         `https://api.notion.com/v1/databases/${DB_ID}/query`,
         {
@@ -52,7 +51,6 @@ export default async function handler(req, res) {
     if (req.method === "POST") {
       const { units, assets, rent } = req.body;
 
-      // Query existing
       const queryRes = await fetch(
         `https://api.notion.com/v1/databases/${DB_ID}/query`,
         {
@@ -68,7 +66,6 @@ export default async function handler(req, res) {
       const page = queryData.results?.[0];
 
       if (page) {
-        // Update existing
         await fetch(`https://api.notion.com/v1/pages/${page.id}`, {
           method: "PATCH",
           headers: {
@@ -85,7 +82,6 @@ export default async function handler(req, res) {
           }),
         });
       } else {
-        // Create new
         await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
           headers: {
