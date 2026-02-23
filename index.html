@@ -1,22 +1,257 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="da">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Connect to Notion API</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ejendomsdashboard</title>
+  <style>
+    :root{
+      --bg:#0b1220;
+      --card:#0f1a2e;
+      --muted:#8ea0c2;
+      --text:#eaf0ff;
+      --accent:#4da3ff;
+      --border: rgba(255,255,255,.08);
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius:16px;
+      --pad:18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      background: radial-gradient(1200px 700px at 20% 10%, rgba(77,163,255,.25), transparent 60%),
+                  radial-gradient(900px 600px at 80% 30%, rgba(155,89,182,.18), transparent 60%),
+                  var(--bg);
+      color:var(--text);
+      padding:24px;
+    }
+    .wrap{max-width:980px;margin:0 auto;}
+    header{
+      display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;
+      margin-bottom:18px;
+    }
+    h1{margin:0;font-size:20px;letter-spacing:.2px}
+    .sub{color:var(--muted);font-size:13px;margin-top:6px}
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap:14px;
+    }
+    @media (max-width:820px){ .grid{grid-template-columns:1fr} }
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.06), transparent 60%), var(--card);
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      padding: var(--pad);
+      box-shadow: var(--shadow);
+      position:relative;
+      overflow:hidden;
+      min-height:118px;
+    }
+    .card:before{
+      content:"";
+      position:absolute;inset:-2px;
+      background: radial-gradient(320px 140px at 20% 0%, rgba(77,163,255,.18), transparent 60%);
+      pointer-events:none;
+    }
+    .label{
+      color:var(--muted);
+      font-size:12px;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      position:relative;
+    }
+    .value{
+      font-size:30px;
+      font-weight:800;
+      margin-top:10px;
+      position:relative;
+      line-height:1.1;
+    }
+    .hint{
+      color:var(--muted);
+      font-size:12px;
+      margin-top:8px;
+      position:relative;
+    }
+    .panel{
+      margin-top:14px;
+      background: rgba(15,26,46,.55);
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      padding:16px;
+      box-shadow: var(--shadow);
+    }
+    .panel h2{margin:0 0 10px 0;font-size:14px;color:var(--text)}
+    form{
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap:10px;
+      align-items:end;
+    }
+    @media (max-width:820px){ form{grid-template-columns:1fr} }
+    .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+    .field input{
+      width:100%;
+      border-radius:12px;
+      border:1px solid var(--border);
+      background: rgba(11,18,32,.6);
+      color: var(--text);
+      padding:10px 12px;
+      outline:none;
+    }
+    .row{
+      display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:center;
+    }
+    button{
+      border-radius:12px;
+      border:1px solid var(--border);
+      background: rgba(77,163,255,.22);
+      color: var(--text);
+      padding:10px 12px;
+      cursor:pointer;
+      font-weight:700;
+    }
+    button.secondary{background: rgba(255,255,255,.06)}
+    .note{color:var(--muted);font-size:12px}
+    a{color:var(--accent);text-decoration:none}
+    .status{font-size:12px;color:var(--accent);margin-top:8px}
+  </style>
 </head>
 <body>
-    <h1>Connecting to the Notion API</h1>
-    <script>
-        fetch('https://dashboard-b1kcof6rz-mikkel-carton-nielsens-projects.vercel.app/')
-            .then(response => response.json())
-            .then(data => {
-                console.log(data);
-                // Handle data from Notion API
-            })
-            .catch(error => {
-                console.error('Error:', error);
-            });
-    </script>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Ejendomsdashboard</h1>
+        <div class="sub">Nøgletal for porteføljen (gemmes i Notion).</div>
+      </div>
+      <div class="note">
+        Tip: Når du har hostet siden, kan du embedde den i Notion via <b>/embed</b>.
+      </div>
+    </header>
+
+    <section class="grid" aria-label="KPI-kort">
+      <div class="card">
+        <div class="label">Antal lejemål</div>
+        <div class="value" id="kpiUnits">–</div>
+        <div class="hint">Opsummerer alle aktive lejemål</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Samlet aktiver</div>
+        <div class="value" id="kpiAssets">–</div>
+        <div class="hint">Ejendomsværdi / porteføljeværdi</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Årlig samlet husleje</div>
+        <div class="value" id="kpiRent">–</div>
+        <div class="hint">Årlig brutto husleje (før omkostninger)</div>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Rediger nøgletal">
+      <h2>Opdater tal</h2>
+      <form id="kpiForm">
+        <div class="field">
+          <label for="units">Antal lejemål</label>
+          <input id="units" name="units" type="number" min="0" step="1" placeholder="fx 12" />
+        </div>
+        <div class="field">
+          <label for="assets">Samlet aktiver (DKK)</label>
+          <input id="assets" name="assets" type="number" min="0" step="1000" placeholder="fx 25000000" />
+        </div>
+        <div class="field">
+          <label for="rent">Årlig samlet husleje (DKK)</label>
+          <input id="rent" name="rent" type="number" min="0" step="1000" placeholder="fx 1350000" />
+        </div>
+
+        <div class="row" style="grid-column:1/-1;">
+          <button type="submit">Gem</button>
+          <button type="button" class="secondary" id="resetBtn">Nulstil</button>
+          <span class="status" id="status"></span>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <script>
+    const API_URL = "https://dashboard-b1kcof6rz-mikkel-carton-nielsens-projects.vercel.app";
+
+    const fmtInt = (n) => new Intl.NumberFormat("da-DK", { maximumFractionDigits: 0 }).format(n ?? 0);
+    const fmtDkk = (n) => new Intl.NumberFormat("da-DK", { style: "currency", currency: "DKK", maximumFractionDigits: 0 }).format(n ?? 0);
+
+    const render = (state) => {
+      document.getElementById("kpiUnits").textContent = fmtInt(state.units);
+      document.getElementById("kpiAssets").textContent = fmtDkk(state.assets);
+      document.getElementById("kpiRent").textContent = fmtDkk(state.rent);
+
+      document.getElementById("units").value = state.units ?? 0;
+      document.getElementById("assets").value = state.assets ?? 0;
+      document.getElementById("rent").value = state.rent ?? 0;
+    };
+
+    const showStatus = (msg, color = "var(--accent)") => {
+      const el = document.getElementById("status");
+      el.textContent = msg;
+      el.style.color = color;
+      setTimeout(() => { el.textContent = ""; }, 3000);
+    };
+
+    // Hent data fra API når siden loader
+    fetch(`${API_URL}/api/kpi`)
+      .then(res => res.json())
+      .then(data => {
+        console.log("Data fra API:", data);
+        render(data);
+        showStatus("✓ Data hentet fra Notion");
+      })
+      .catch(err => {
+        console.error("Fejl ved GET:", err);
+        showStatus("Kunne ikke forbinde til server", "red");
+        render({ units: 0, assets: 0, rent: 0 });
+      });
+
+    document.getElementById("kpiForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const next = {
+        units: Number(document.getElementById("units").value || 0),
+        assets: Number(document.getElementById("assets").value || 0),
+        rent: Number(document.getElementById("rent").value || 0),
+      };
+
+      try {
+        const res = await fetch(`${API_URL}/api/kpi`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(next),
+        });
+        const data = await res.json();
+        render(data);
+        showStatus("✓ Gemt i Notion!");
+      } catch (error) {
+        console.error("Fejl ved POST:", error);
+        showStatus("Fejl ved gemning", "red");
+      }
+    });
+
+    document.getElementById("resetBtn").addEventListener("click", async () => {
+      const reset = { units: 0, assets: 0, rent: 0 };
+      try {
+        const res = await fetch(`${API_URL}/api/kpi`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(reset),
+        });
+        const data = await res.json();
+        render(data);
+        showStatus("✓ Nulstillet");
+      } catch (error) {
+        console.error("Fejl ved nulstilling:", error);
+        showStatus("Fejl ved nulstilling", "red");
+      }
+    });
+  </script>
 </body>
 </html>
