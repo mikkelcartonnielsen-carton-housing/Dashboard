@@ -1,40 +1,42 @@
-// Import necessary libraries
-const { Client } = require('@notionhq/client');
+async function fetchNotionData() {
+    const headers = {
+        "Authorization": `Bearer YOUR_NOTION_INTEGRATION_TOKEN`,
+        "Content-Type": "application/json",
+    };
 
-// Initialize Notion client
-const notion = new Client({ auth: process.env.NOTION_API_KEY });
+    // Query Ejendomme database to sum Købesum
+    const ejendommeResponse = await fetch(`https://api.notion.com/v1/databases/30837e55cb6c804f8d4fe2ffb2aa54ee/query`, {
+        method: 'POST',
+        headers: {
+            ...headers,
+            "Notion-Version": "2021-05-13"
+        },
+    });
+    const ejendommeData = await ejendommeResponse.json();
+    const totalKobesum = ejendommeData.results.reduce((sum, row) => {
+        return sum + (row.properties["Købesum"].number || 0);
+    }, 0);
 
-async function queryNotionData() {
-    try {
-        // Query Købesum from the first Notion database
-        const købesumResponse = await notion.databases.query({
-            database_id: '30837e55cb6c804f8d4fe2ffb2aa54ee',
-            filter: { 
-                property: 'Købesum',
-                number: { 
-                    is_not_empty: true
-                } 
-            }
-        });
-        const købesum = købesumResponse.results.map(result => result.properties['Købesum'].number);
+    // Query Lejemål database to count units and sum Årlig lejeindtægt
+    const lejemalResponse = await fetch(`https://api.notion.com/v1/databases/35a0fc12a7ee4119aabc491d90d73de5/query`, {
+        method: 'POST',
+        headers: {
+            ...headers,
+            "Notion-Version": "2021-05-13"
+        },
+    });
+    const lejemalData = await lejemalResponse.json();
+    const units = lejemalData.results.length;
+    const totalRent = lejemalData.results.reduce((sum, row) => {
+        return sum + (row.properties["Årlig lejeindtægt"].number || 0);
+    }, 0);
 
-        // Query Antal lejemål and Årlig lejeidtægt from the second Notion database
-        const lejemålResponse = await notion.databases.query({
-            database_id: '35a0fc12a7ee4119aabc491d90d73de5',
-            filter: { 
-                property: 'Antal lejemål',
-                number: { 
-                    is_not_empty: true
-                }
-            }
-        });
-        const antalLejemål = lejemålResponse.results.map(result => result.properties['Antal lejemål'].number);
-        const årligLejeindtægt = lejemålResponse.results.map(result => result.properties['Årlig lejeidtægt'].number);
-
-        return { købesum, antalLejemål, årligLejeindtægt };
-    } catch (error) {
-        console.error('Error querying Notion:', error);
-    }
+    return {
+        units,
+        assets: totalKobesum,
+        rent: totalRent,
+    };
 }
 
-module.exports = queryNotionData;
+// Example usage
+fetchNotionData().then(console.log);
