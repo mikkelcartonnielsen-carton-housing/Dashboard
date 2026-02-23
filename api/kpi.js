@@ -5,6 +5,19 @@ const ACTIVE_STATUS_FILTER = {
   select: { equals: "Aktiv" },
 };
 
+function getNumberProp(page, propName) {
+  const prop = page?.properties?.[propName];
+  return prop?.type === "number" && typeof prop.number === "number" ? prop.number : 0;
+}
+
+async function safeParseJson(response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
 export default async function handler(req, res) {
   // CORS (så din statiske index.html kan kalde endpointet)
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -28,42 +41,48 @@ export default async function handler(req, res) {
     if (!EJENDOMME_DB_ID) throw new Error("Missing env var: EJENDOMME_DB_ID");
     if (!LEJEMAAL_DB_ID) throw new Error("Missing env var: LEJEMAAL_DB_ID");
 
+    if (typeof fetch !== "function") {
+      throw new Error("fetch is not available in this runtime");
+    }
+
     async function notionQueryAll(databaseId, filter) {
       const results = [];
-      let start_cursor = undefined;
+      let startCursor;
 
       while (true) {
-        const r = await fetch(`${NOTION_API_URL}/${databaseId}/query`, {
+        const body = {
+          page_size: 100,
+          ...(filter ? { filter } : {}),
+          ...(startCursor ? { start_cursor: startCursor } : {}),
+        };
+
+        const response = await fetch(`${NOTION_API_URL}/${databaseId}/query`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${NOTION_TOKEN}`,
             "Notion-Version": NOTION_VERSION,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            page_size: 100,
-            start_cursor,
-            ...(filter ? { filter } : {}),
-          }),
+          body: JSON.stringify(body),
         });
 
-        const data = await r.json();
-        if (!r.ok) {
-          throw new Error(data?.message || `Notion API error (${r.status})`);
+        const data = await safeParseJson(response);
+
+        if (!response.ok) {
+          throw new Error(data?.message || `Notion API error (${response.status})`);
+        }
+
+        if (!Array.isArray(data?.results)) {
+          throw new Error("Invalid Notion response format: expected results array");
         }
 
         results.push(...data.results);
 
         if (!data.has_more) break;
-        start_cursor = data.next_cursor;
+        startCursor = data.next_cursor;
       }
 
       return results;
-    }
-
-    function getNumberProp(page, propName) {
-      const prop = page?.properties?.[propName];
-      return prop?.type === "number" && typeof prop.number === "number" ? prop.number : 0;
     }
 
     // 1) Ejendomme: sum Antal lejemål + sum Købesum
@@ -76,7 +95,6 @@ export default async function handler(req, res) {
       (acc, page) => {
         acc.units += getNumberProp(page, "Antal lejemål");
         acc.assets += getNumberProp(page, "Købesum");
-
         return acc;
       },
       { units: 0, assets: 0 }
