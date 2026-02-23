@@ -1,53 +1,118 @@
-const fetch = require('node-fetch');
+export default async function handler(req, res) {
+  const NOTION_API_KEY = process.env.NOTION_API_KEY;
+  const DATABASE_ID = process.env.NOTION_DATABASE_ID;
 
-const notionToken = 'YOUR_NOTION_INTEGRATION_TOKEN';
-const notionURL = 'https://api.notion.com/v1/databases';
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-// Function to fetch KPI data from Notion databases
-async function fetchKPIData() {
-    const properties = [];
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
 
-    // Fetch Ejendomme data
-    const ejendommeResponse = await fetch(`${notionURL}/Ejendomme`, {
-        method: 'GET',
-        headers: {
-            'Authorization': `Bearer ${notionToken}`,
-            'Notion-Version': '2022-06-28',
-        },
-    });
-    const ejendommeData = await ejendommeResponse.json();
-    properties.push(...ejendommeData.results);
-
-    // Fetch Lejemål data
-    const lejemalResponse = await fetch(`${notionURL}/Lejemål`, {
-        method: 'GET',
-        headers: {
-            'Authorization': `Bearer ${notionToken}`,
-            'Notion-Version': '2022-06-28',
-        },
-    });
-    const lejemalData = await lejemalResponse.json();
-    properties.push(...lejemalData.results);
-
-    // Process the fetched data
-    const unitCount = properties.length;
-    const totalAssets = properties.reduce((sum, property) => sum + (property.properties.købesum.number || 0), 0);
-    const annualRent = properties.reduce((sum, property) => sum + (property.properties.årlig_husleje.number || 0), 0);
-
-    return { unitCount, totalAssets, annualRent };
-}
-
-// Export the serverless function
-module.exports = async (req, res) => {
-    if (req.method === 'GET') {
-        try {
-            const kpiData = await fetchKPIData();
-            res.status(200).json(kpiData);
-        } catch (error) {
-            res.status(500).json({ error: 'Error fetching KPI data' });
+  if (req.method === "GET") {
+    try {
+      const response = await fetch(
+        `https://api.notion.com/v1/databases/${DATABASE_ID}/query`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${NOTION_API_KEY}`,
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json",
+          },
         }
-    } else {
-        res.setHeader('Allow', ['GET']);
-        res.status(405).end(`Method ${req.method} Not Allowed`);
+      );
+      const data = await response.json();
+      const results = data.results || [];
+
+      if (results.length === 0) {
+        return res.status(200).json({
+          units: 0,
+          assets: 0,
+          rent: 0,
+        });
+      }
+
+      const page = results[0];
+      const props = page.properties;
+
+      return res.status(200).json({
+        units: props["Antal lejemål"]?.number || 0,
+        assets: props["Samlet aktiver"]?.number || 0,
+        rent: props["Årlig husleje"]?.number || 0,
+      });
+    } catch (error) {
+      console.error("GET error:", error);
+      return res.status(500).json({ error: "Fejl ved læsning fra Notion" });
     }
-};
+  }
+
+  if (req.method === "POST") {
+    try {
+      const { units, assets, rent } = req.body;
+
+      const response = await fetch(
+        `https://api.notion.com/v1/databases/${DATABASE_ID}/query`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${NOTION_API_KEY}`,
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      const data = await response.json();
+      const results = data.results || [];
+
+      if (results.length === 0) {
+        await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${NOTION_API_KEY}`,
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            parent: { database_id: DATABASE_ID },
+            properties: {
+              "Antal lejemål": { number: units },
+              "Samlet aktiver": { number: assets },
+              "Årlig husleje": { number: rent },
+            },
+          }),
+        });
+      } else {
+        const pageId = results[0].id;
+        await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${NOTION_API_KEY}`,
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            properties: {
+              "Antal lejemål": { number: units },
+              "Samlet aktiver": { number: assets },
+              "Årlig husleje": { number: rent },
+            },
+          }),
+        });
+      }
+
+      return res.status(200).json({
+        units,
+        assets,
+        rent,
+        message: "Gemt i Notion!",
+      });
+    } catch (error) {
+      console.error("POST error:", error);
+      return res.status(500).json({ error: "Fejl ved gemning til Notion" });
+    }
+  }
+
+  return res.status(405).json({ error: "Method not allowed" });
+}
