@@ -31,13 +31,13 @@ export default async function handler(req, res) {
       const data = await res_notion.json();
       
       let totalKøbesum = 0;
-      let totalÅrligLejeidtægt = 0;
+      let totalÅrligLejeindtægt = 0;
       let totalAntalLejemål = 0;
 
       if (data.results && data.results.length > 0) {
         data.results.forEach((page) => {
           totalKøbesum += page.properties["Købesum"]?.number || 0;
-          totalÅrligLejeidtægt += page.properties["Årlig lejeidtægt"]?.number || 0;
+          totalÅrligLejeindtægt += page.properties["Årlig lejeindtægt"]?.number || 0;
           totalAntalLejemål += page.properties["Antal lejemål"]?.number || 0;
         });
       }
@@ -45,7 +45,7 @@ export default async function handler(req, res) {
       return res.json({
         units: totalAntalLejemål,
         assets: totalKøbesum,
-        rent: totalÅrligLejeidtægt,
+        rent: totalÅrligLejeindtægt,
       });
     }
 
