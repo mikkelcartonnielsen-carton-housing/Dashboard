@@ -15,12 +15,10 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === "GET") {
-      const EJENDOMME_DB = "30837e55cb6c804f8d4fe2ffb2aa54ee";
-      const LEJEMÅL_DB = "35a0fc12a7ee4119aabc491d90d73de5";
+      const DB_ID = "30837e55cb6c804f8d4fe2ffb2aa54ee";
 
-      // Fetch Ejendomme
-      const ejendommeRes = await fetch(
-        `https://api.notion.com/v1/databases/${EJENDOMME_DB}/query`,
+      const res_notion = await fetch(
+        `https://api.notion.com/v1/databases/${DB_ID}/query`,
         {
           method: "POST",
           headers: {
@@ -30,44 +28,24 @@ export default async function handler(req, res) {
         }
       );
 
-      const ejendommeData = await ejendommeRes.json();
-      let totalAssets = 0;
+      const data = await res_notion.json();
+      
+      let købesum = 0;
+      let årligLejeidtægt = 0;
+      let antalLejemål = 0;
 
-      if (ejendommeData.results) {
-        ejendommeData.results.forEach((page) => {
-          const købesum = page.properties["Købesum"]?.number || 0;
-          totalAssets += købesum;
-        });
-      }
-
-      // Fetch Lejemål
-      const lejemålRes = await fetch(
-        `https://api.notion.com/v1/databases/${LEJEMÅL_DB}/query`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${NOTION_KEY}`,
-            "Notion-Version": "2022-06-28",
-          },
-        }
-      );
-
-      const lejemålData = await lejemålRes.json();
-      let units = 0;
-      let totalRent = 0;
-
-      if (lejemålData.results) {
-        units = lejemålData.results.length;
-        lejemålData.results.forEach((page) => {
-          const rent = page.properties["Årlig lejeidtægt"]?.number || 0;
-          totalRent += rent;
-        });
+      if (data.results && data.results.length > 0) {
+        const page = data.results[0];
+        
+        købesum = page.properties["Købesum"]?.number || 0;
+        årligLejeidtægt = page.properties["Årlig lejeidtægt"]?.number || 0;
+        antalLejemål = page.properties["Antal lejemål"]?.number || 0;
       }
 
       return res.json({
-        units,
-        assets: totalAssets,
-        rent: totalRent,
+        units: antalLejemål,
+        assets: købesum,
+        rent: årligLejeidtægt,
       });
     }
 
