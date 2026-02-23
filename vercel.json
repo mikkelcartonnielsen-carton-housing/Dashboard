@@ -1,0 +1,8 @@
+{
+  "buildCommand": "",
+  "outputDirectory": "",
+  "env": {
+    "NOTION_API_KEY": "@NOTION_API_KEY",
+    "NOTION_DATABASE_ID": "@NOTION_DATABASE_ID"
+  }
+}
