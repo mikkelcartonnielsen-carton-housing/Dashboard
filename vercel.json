@@ -1,8 +1,19 @@
 {
-  "buildCommand": "",
-  "outputDirectory": "",
-  "env": {
-    "NOTION_API_KEY": "@NOTION_API_KEY",
-    "NOTION_DATABASE_ID": "@NOTION_DATABASE_ID"
-  }
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
 }
