@@ -1,86 +1,82 @@
 export default async function handler(req, res) {
-  // CORS Headers
+  // Enable CORS
+  res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS,PATCH,DELETE,POST,PUT");
+  res.setHeader("Access-Control-Allow-Headers", "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version");
 
   if (req.method === "OPTIONS") {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
-  const NOTION_API_KEY = process.env.NOTION_API_KEY;
-  const DATABASE_ID = process.env.NOTION_DATABASE_ID;
+  const NOTION_KEY = process.env.NOTION_API_KEY;
+  const DB_ID = process.env.NOTION_DATABASE_ID;
 
-  if (!NOTION_API_KEY || !DATABASE_ID) {
-    return res.status(500).json({ error: "Missing API key or database ID" });
+  if (!NOTION_KEY || !DB_ID) {
+    return res.status(500).json({ error: "Missing env vars" });
   }
 
-  if (req.method === "GET") {
-    try {
+  try {
+    if (req.method === "GET") {
+      // Fetch from Notion
       const response = await fetch(
-        `https://api.notion.com/v1/databases/${DATABASE_ID}/query`,
+        `https://api.notion.com/v1/databases/${DB_ID}/query`,
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${NOTION_API_KEY}`,
+            Authorization: `Bearer ${NOTION_KEY}`,
             "Notion-Version": "2022-06-28",
-            "Content-Type": "application/json",
           },
         }
       );
-      const data = await response.json();
-      const results = data.results || [];
 
-      if (results.length === 0) {
-        return res.status(200).json({
-          units: 0,
-          assets: 0,
-          rent: 0,
-        });
+      if (!response.ok) {
+        return res.status(response.status).json({ error: "Notion API error" });
       }
 
-      const page = results[0];
-      const props = page.properties;
+      const data = await response.json();
+      const page = data.results?.[0];
 
-      return res.status(200).json({
-        units: props["Antal lejemål"]?.number || 0,
-        assets: props["Samlet aktiver"]?.number || 0,
-        rent: props["Årlig husleje"]?.number || 0,
+      if (!page) {
+        return res.json({ units: 0, assets: 0, rent: 0 });
+      }
+
+      return res.json({
+        units: page.properties["Antal lejemål"]?.number || 0,
+        assets: page.properties["Samlet aktiver"]?.number || 0,
+        rent: page.properties["Årlig husleje"]?.number || 0,
       });
-    } catch (error) {
-      console.error("GET error:", error);
-      return res.status(500).json({ error: "Failed to read from Notion" });
     }
-  }
 
-  if (req.method === "POST") {
-    try {
+    if (req.method === "POST") {
       const { units, assets, rent } = req.body;
 
-      const response = await fetch(
-        `https://api.notion.com/v1/databases/${DATABASE_ID}/query`,
+      // Query existing
+      const queryRes = await fetch(
+        `https://api.notion.com/v1/databases/${DB_ID}/query`,
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${NOTION_API_KEY}`,
+            Authorization: `Bearer ${NOTION_KEY}`,
             "Notion-Version": "2022-06-28",
-            "Content-Type": "application/json",
           },
         }
       );
-      const data = await response.json();
-      const results = data.results || [];
 
-      if (results.length === 0) {
-        await fetch("https://api.notion.com/v1/pages", {
-          method: "POST",
+      const queryData = await queryRes.json();
+      const page = queryData.results?.[0];
+
+      if (page) {
+        // Update existing
+        await fetch(`https://api.notion.com/v1/pages/${page.id}`, {
+          method: "PATCH",
           headers: {
-            Authorization: `Bearer ${NOTION_API_KEY}`,
+            Authorization: `Bearer ${NOTION_KEY}`,
             "Notion-Version": "2022-06-28",
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            parent: { database_id: DATABASE_ID },
             properties: {
               "Antal lejemål": { number: units },
               "Samlet aktiver": { number: assets },
@@ -89,15 +85,16 @@ export default async function handler(req, res) {
           }),
         });
       } else {
-        const pageId = results[0].id;
-        await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
-          method: "PATCH",
+        // Create new
+        await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
           headers: {
-            Authorization: `Bearer ${NOTION_API_KEY}`,
+            Authorization: `Bearer ${NOTION_KEY}`,
             "Notion-Version": "2022-06-28",
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
+            parent: { database_id: DB_ID },
             properties: {
               "Antal lejemål": { number: units },
               "Samlet aktiver": { number: assets },
@@ -107,18 +104,12 @@ export default async function handler(req, res) {
         });
       }
 
-      return res.status(200).json({
-        units,
-        assets,
-        rent,
-        message: "Saved to Notion!",
-      });
-    } catch (error) {
-      console.error("POST error:", error);
-      return res.status(500).json({ error: "Failed to save to Notion" });
+      return res.json({ units, assets, rent, success: true });
     }
-  }
 
-  return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({ error: "Method not allowed" });
+  } catch (error) {
+    console.error("Error:", error);
+    return res.status(500).json({ error: error.message });
+  }
 }
- 
