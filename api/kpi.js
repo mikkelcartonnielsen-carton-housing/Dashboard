@@ -1,3 +1,10 @@
+const NOTION_VERSION = "2022-06-28";
+const NOTION_API_URL = "https://api.notion.com/v1/databases";
+const ACTIVE_STATUS_FILTER = {
+  property: "Status",
+  select: { equals: "Aktiv" },
+};
+
 export default async function handler(req, res) {
   // CORS (så din statiske index.html kan kalde endpointet)
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -21,14 +28,12 @@ export default async function handler(req, res) {
     if (!EJENDOMME_DB_ID) throw new Error("Missing env var: EJENDOMME_DB_ID");
     if (!LEJEMAAL_DB_ID) throw new Error("Missing env var: LEJEMAAL_DB_ID");
 
-    const NOTION_VERSION = "2022-06-28";
-
     async function notionQueryAll(databaseId, filter) {
-      let results = [];
+      const results = [];
       let start_cursor = undefined;
 
       while (true) {
-        const r = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+        const r = await fetch(`${NOTION_API_URL}/${databaseId}/query`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${NOTION_TOKEN}`,
@@ -47,7 +52,7 @@ export default async function handler(req, res) {
           throw new Error(data?.message || `Notion API error (${r.status})`);
         }
 
-        results = results.concat(data.results);
+        results.push(...data.results);
 
         if (!data.has_more) break;
         start_cursor = data.next_cursor;
@@ -62,26 +67,23 @@ export default async function handler(req, res) {
     }
 
     // 1) Ejendomme: sum Antal lejemål + sum Købesum
-    const ejendommePages = await notionQueryAll(EJENDOMME_DB_ID);
+    const [ejendommePages, lejemalPages] = await Promise.all([
+      notionQueryAll(EJENDOMME_DB_ID),
+      notionQueryAll(LEJEMAAL_DB_ID, ACTIVE_STATUS_FILTER),
+    ]);
 
-    const units = ejendommePages.reduce(
-      (acc, p) => acc + getNumberProp(p, "Antal lejemål"),
-      0
+    const { units, assets } = ejendommePages.reduce(
+      (acc, page) => {
+        acc.units += getNumberProp(page, "Antal lejemål");
+        acc.assets += getNumberProp(page, "Købesum");
+
+        return acc;
+      },
+      { units: 0, assets: 0 }
     );
 
-    const assets = ejendommePages.reduce(
-      (acc, p) => acc + getNumberProp(p, "Købesum"),
-      0
-    );
-
-    // 2) Lejemål: rent = sum(Husleje (kr.) * 12) for Status = Aktiv
-    const lejemalPages = await notionQueryAll(LEJEMAAL_DB_ID, {
-      property: "Status",
-      select: { equals: "Aktiv" },
-    });
-
-    const rent = lejemalPages.reduce((acc, p) => {
-      const husleje = getNumberProp(p, "Husleje (kr.)");
+    const rent = lejemalPages.reduce((acc, page) => {
+      const husleje = getNumberProp(page, "Husleje (kr.)");
       return acc + husleje * 12;
     }, 0);
 
