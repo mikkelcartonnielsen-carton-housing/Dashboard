@@ -1,13 +1,18 @@
 export default async function handler(req, res) {
-  const NOTION_API_KEY = process.env.NOTION_API_KEY;
-  const DATABASE_ID = process.env.NOTION_DATABASE_ID;
-
+  // CORS Headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
+  }
+
+  const NOTION_API_KEY = process.env.NOTION_API_KEY;
+  const DATABASE_ID = process.env.NOTION_DATABASE_ID;
+
+  if (!NOTION_API_KEY || !DATABASE_ID) {
+    return res.status(500).json({ error: "Missing API key or database ID" });
   }
 
   if (req.method === "GET") {
@@ -44,7 +49,7 @@ export default async function handler(req, res) {
       });
     } catch (error) {
       console.error("GET error:", error);
-      return res.status(500).json({ error: "Fejl ved læsning fra Notion" });
+      return res.status(500).json({ error: "Failed to read from Notion" });
     }
   }
 
@@ -106,11 +111,11 @@ export default async function handler(req, res) {
         units,
         assets,
         rent,
-        message: "Gemt i Notion!",
+        message: "Saved to Notion!",
       });
     } catch (error) {
       console.error("POST error:", error);
-      return res.status(500).json({ error: "Fejl ved gemning til Notion" });
+      return res.status(500).json({ error: "Failed to save to Notion" });
     }
   }
 
