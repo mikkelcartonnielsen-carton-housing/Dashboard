@@ -38,6 +38,7 @@
     .error { color: #ff6b6b; }
   </style>
 </head>
+
 <body>
   <div class="wrap">
     <h1>Ejendomsdashboard</h1>
@@ -48,38 +49,41 @@
         <div class="label">👥 Antal lejemål</div>
         <div class="value" id="units"><span class="loading">–</span></div>
       </div>
+
       <div class="card">
         <div class="label">💰 Købesum</div>
         <div class="value" id="assets"><span class="loading">–</span></div>
       </div>
+
       <div class="card">
-        <div class="label">📅 Årlig lejeidtægt</div>
+        <div class="label">📅 Årlig lejeindtægt</div>
         <div class="value" id="rent"><span class="loading">–</span></div>
       </div>
     </div>
   </div>
 
   <script>
+    // Base URL til din Vercel-app (uden trailing slash)
     const API = "https://dashboard-teal-eta-20.vercel.app";
 
-    const fmtDkk = (n) => 
-      new Intl.NumberFormat("da-DK", { 
-        style: "currency", 
-        currency: "DKK", 
-        maximumFractionDigits: 0 
+    const fmtDkk = (n) =>
+      new Intl.NumberFormat("da-DK", {
+        style: "currency",
+        currency: "DKK",
+        maximumFractionDigits: 0
       }).format(n || 0);
 
     const fmt = (n) => new Intl.NumberFormat("da-DK").format(n || 0);
 
     async function load() {
       try {
-        const res = await fetch(`${API}/api/kpi`);
+        const res = await fetch(`${API}/api/kpi`, { cache: "no-store" });
         if (!res.ok) {
           throw new Error(`API error: ${res.status}`);
         }
-        
+
         const data = await res.json();
-        
+
         document.getElementById("units").textContent = fmt(data.units);
         document.getElementById("assets").textContent = fmtDkk(data.assets);
         document.getElementById("rent").textContent = fmtDkk(data.rent);
